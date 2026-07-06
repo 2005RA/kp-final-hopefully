@@ -205,64 +205,60 @@ export default function RaceWorkspace({ race, onBack }) {
 
     if (!race.validate) { showToastMsg('Bu yarışın yoxlaması hələ hazır deyil 🚧'); return; }
     const ok = race.validate(code);
-    if (ok) {
+    if (!ok) {
+      setError(race.errorMsg || 'Kodda bir şey düz deyil.');
+      return;
+    }
+
+    // Client-side check passed, but don't celebrate yet — the server re-runs
+    // its own validate() and is the only source of truth. Celebrating here
+    // and walking it back on disagreement is what caused rain + "wrong
+    // answer" to both show up for the same submission.
+    // Local elapsed is only for the toast/finishTime display — it's cosmetic,
+    // not the score. The server recomputes elapsed from its own clock.
+    const localElapsed = startedAt.current
+      ? Math.floor((Date.now() - startedAt.current) / 1000)
+      : 0;
+
+    try {
+      const result = await callEdgeFunction('submit-race-result', {
+        raceId: race.id, endsAt: endsAtISO, code,
+      });
+
+      if (!result.ok) {
+        setError(race.errorMsg || 'Kodda bir şey düz deyil.');
+        return;
+      }
+
+      // Server confirmed the pass — safe to celebrate now.
       clearInterval(timerRef.current);
       setRunning(false);
       setFinished(true);
       setRain(true);
-
-      // Local elapsed is only for the toast/finishTime display — it's cosmetic,
-      // not the score. The server recomputes elapsed from its own clock and
-      // re-runs the correctness check before writing anything.
-      const localElapsed = startedAt.current
-        ? Math.floor((Date.now() - startedAt.current) / 1000)
-        : 0;
       if (race.type === 'speed') setFinishTime(localElapsed);
 
-      try {
-        const result = await callEdgeFunction('submit-race-result', {
-          raceId: race.id, endsAt: endsAtISO, code,
-        });
-
-        if (!result.ok) {
-          // Server disagreed with the client's own check — treat as incorrect.
-          // Undo the optimistic rain/finished state set above too, since it
-          // turns out this wasn't actually a pass.
-          setRain(false);
-          setFinished(false);
-          setRunning(!isExpired);
-          setError(race.errorMsg || 'Kodda bir şey düz deyil.');
-          return;
-        }
-
-        if (!result.alreadyCompleted) {
-          const taskId = `race-${race.id}-${endsAtISO ?? 'practice'}`;
-          const chipsAwarded = addChips(taskId, result.chipsEarned ?? 0, 'race');
-          if (chipsAwarded) flyReward({ type: 'chip', fromEl: rewardRef.current });
-        }
-
-        setError('');
-        showToastMsg(
-          race.type === 'speed'
-            ? `Əla! ${result.elapsed}  saniyədə bitirdin! 🏆`
-            : 'Düzgün! Mükafatlar qazanıldı 🏆'
-        );
-
-        // Attempt the race/rank reward claim the instant this run finishes,
-        // instead of waiting for the leaderboard panel's own countdown (which
-        // only fires if that panel happens to be open) or the next page-load
-        // sweep (which uses whatever endsAt is "current" at that later time —
-        // if it's moved on since this run, the claim for THIS run never
-        // happens at all).
-        if (endsAtISO) checkRaceRewards();
-      } catch (e) {
-        console.error('submit-race-result failed:', e);
-        setFinished(false);
-        setRunning(!isExpired);
-        setError('Nəticə göndərilmədi, yenidən cəhd et.');
+      if (!result.alreadyCompleted) {
+        const taskId = `race-${race.id}-${endsAtISO ?? 'practice'}`;
+        const chipsAwarded = addChips(taskId, result.chipsEarned ?? 0, 'race');
+        if (chipsAwarded) flyReward({ type: 'chip', fromEl: rewardRef.current });
       }
-    } else {
-      setError(race.errorMsg || 'Kodda bir şey düz deyil.');
+
+      setError('');
+      showToastMsg(
+        race.type === 'speed'
+          ? `Əla! ${result.elapsed}  saniyədə bitirdin! 🏆`
+          : 'Düzgün! Mükafatlar qazanıldı 🏆'
+      );
+
+      // Attempt the race/rank reward claim the instant this run finishes,
+      // instead of waiting for the leaderboard panel's own countdown (which
+      // only fires if that panel happens to be open) or the next page-load
+      // sweep. Safe to call unconditionally — claim_race_reward itself won't
+      // pay out until the race's real endsAt has passed.
+      if (endsAtISO) checkRaceRewards();
+    } catch (e) {
+      console.error('submit-race-result failed:', e);
+      setError('Nəticə göndərilmədi, yenidən cəhd et.');
     }
   }
 
