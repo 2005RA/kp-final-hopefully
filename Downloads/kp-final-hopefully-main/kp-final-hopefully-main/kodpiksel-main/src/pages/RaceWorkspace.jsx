@@ -90,6 +90,7 @@ export default function RaceWorkspace({ race, onBack }) {
   const [toast,           setToast]          = useState('');
   const [error,           setError]          = useState('');
   const [rain,            setRain]           = useState(false);
+  const [checking,        setChecking]       = useState(false);
   const [finishTime,      setFinishTime]     = useState(null);
   const [showRaceBoard,   setShowRaceBoard]  = useState(false);
 
@@ -220,6 +221,7 @@ export default function RaceWorkspace({ race, onBack }) {
       ? Math.floor((Date.now() - startedAt.current) / 1000)
       : 0;
 
+    setChecking(true);
     try {
       const result = await callEdgeFunction('submit-race-result', {
         raceId: race.id, endsAt: endsAtISO, code,
@@ -259,6 +261,8 @@ export default function RaceWorkspace({ race, onBack }) {
     } catch (e) {
       console.error('submit-race-result failed:', e);
       setError('Nəticə göndərilmədi, yenidən cəhd et.');
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -394,8 +398,8 @@ export default function RaceWorkspace({ race, onBack }) {
                 {race.type !== 'blind' && (
                   <button className="btn btn-run" onClick={handleRun} disabled={finished || isExpired}>RUN</button>
                 )}
-                <button className="btn btn-check" onClick={handleCheck} disabled={finished || isExpired}>
-                  {race.type === 'blind' ? '🙈 TƏQDIM ET' : 'CAVABIMI YOXLA'}
+                <button className="btn btn-check" onClick={handleCheck} disabled={finished || isExpired || checking}>
+                  {checking ? 'YOXLANILIR...' : (race.type === 'blind' ? '🙈 TƏQDIM ET' : 'CAVABIMI YOXLA')}
                 </button>
               </div>
             </div>
