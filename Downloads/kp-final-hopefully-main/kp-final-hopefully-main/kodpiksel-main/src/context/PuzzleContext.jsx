@@ -119,6 +119,14 @@ export function PuzzleProvider({ children }) {
 
   useEffect(() => {
     if (!loadedRef.current) return;
+    // repeated_pixels used to be written here as a separate top-level column,
+    // but it's one of the columns protect_profile_reward_columns guards —
+    // any client-side write to it (even alongside other fields in the same
+    // UPDATE) makes the trigger throw and roll back the ENTIRE statement,
+    // silently killing the puzzle_state write too whenever `repeated`
+    // changed since the last save. `repeated` already lives inside
+    // puzzle_state (not trigger-protected), so it's dropped here entirely —
+    // see ProfilePage.jsx, which now reads it from puzzle_state instead.
     updateProfile({
       puzzle_state: {
         revealed: Array.from(revealed),
@@ -126,7 +134,6 @@ export function PuzzleProvider({ children }) {
         startedAt: puzzleStartedAt,
         version: PUZZLE_VERSION,
       },
-      repeated_pixels: repeated,
     });
   }, [revealed, repeated, puzzleStartedAt]);
 
@@ -180,13 +187,17 @@ export function PuzzleProvider({ children }) {
     return () => window.removeEventListener('earn-pixel', handler);
   }, [earnPixel]);
 
-  const claimBubble = useCallback((bubbleId, addReward) => {
+  const claimBubble = useCallback((bubbleId, claimBubbleRewards) => {
     const bubble = BUBBLES.find(b => b.id === bubbleId);
     if (!bubble) return false;
     if (repeated < bubble.cost) return false;
 
     setRepeated(r => r - bubble.cost);
-    bubble.rewards.forEach(r => addReward(r.type, r.amount));
+    // One RPC call for the whole claim, tagged with a claim-unique task id
+    // (bubbles are redeemable repeatedly, so this isn't a "did this once"
+    // task — the id just keeps the server-side idempotency check from
+    // treating two different claims as duplicates of each other).
+    claimBubbleRewards(bubble.rewards, `bubble-${bubbleId}-${crypto.randomUUID()}`);
     return true;
   }, [repeated]);
 

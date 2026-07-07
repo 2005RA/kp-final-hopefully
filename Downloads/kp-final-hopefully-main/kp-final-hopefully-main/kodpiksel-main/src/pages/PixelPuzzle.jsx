@@ -96,14 +96,14 @@ function BubbleShop({ bubbles, repeated, onClaim }) {
 export default function PixelPuzzle() {
   const { revealed, repeated, bubbles, boardTarget,
           earnPixel, claimBubble, clearNewPixel, countdownLabel } = usePuzzle();
-  const { addReward } = useRewards();
+  const { claimBubbleRewards } = useRewards();
   const testBtnRef = useRef(null);
 
   // Clear red dot when page opens
   useEffect(() => { clearNewPixel(); }, [clearNewPixel]);
 
   function handleClaim(bubbleId) {
-    const ok = claimBubble(bubbleId, addReward);
+    const ok = claimBubble(bubbleId, claimBubbleRewards);
     if (!ok) return;
     // Fly all rewards to their icons
     const b = bubbles.find(b => b.id === bubbleId);

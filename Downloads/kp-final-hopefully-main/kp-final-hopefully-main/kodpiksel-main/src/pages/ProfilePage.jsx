@@ -212,7 +212,7 @@ export default function ProfilePage({ onBack }) {
             <StatPill icon="🖥️" label="Çip"       value={profile.chips       ?? 0} color="var(--teal)"   />
             <StatPill icon="🗝️" label="Açar"      value={profile.keys        ?? 0} color="var(--yellow)" />
             <StatPill icon="⏳" label="Qum Saatı" value={profile.hourglasses ?? 0} color="#a78bfa"       />
-            <StatPill icon="🔁" label="Təkrar Piksellər" value={profile.repeated_pixels ?? 0} color="var(--pink)" />
+            <StatPill icon="🔁" label="Təkrar Piksellər" value={profile.puzzle_state?.repeated ?? 0} color="var(--pink)" />
           </div>
 
           {/* Section: Course progress */}

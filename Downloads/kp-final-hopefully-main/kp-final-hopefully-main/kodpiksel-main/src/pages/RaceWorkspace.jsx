@@ -158,9 +158,16 @@ export default function RaceWorkspace({ race, onBack }) {
     }
     addReward('hourglass', -1); // optimistic UI
     if (userId) {
-      supabase.rpc('increment_profile_reward', {
-        p_delta_hourglasses: -1, p_task_id: null, p_source: 'race_hourglass',
-      }).catch(e => console.error('increment_profile_reward failed:', e));
+      // NOTE: supabase.rpc(...) returns a lazy PostgrestFilterBuilder, which
+      // implements .then() but NOT .catch() — chaining .catch() directly on
+      // it throws a synchronous TypeError before the request is even sent.
+      // Use .then(onFulfilled, onRejected) instead, and pass a unique
+      // p_task_id since claim_task_reward requires a non-null one.
+      supabase.rpc('claim_task_reward', {
+        p_delta_hourglasses: -1, p_task_id: `hourglass-use-${race.id}-${crypto.randomUUID()}`, p_source: 'race_hourglass',
+      }).then(({ error }) => {
+        if (error) console.error('claim_task_reward failed:', error);
+      });
     }
     setTimeLeft(prev => prev + HOURGLASS_SECS);
     setUsedHourglasses(n => n + 1);
@@ -174,9 +181,11 @@ export default function RaceWorkspace({ race, onBack }) {
     if (!race.chest) return;
     addReward('key', -race.chest.cost);
     if (userId) {
-      supabase.rpc('increment_profile_reward', {
-        p_delta_keys: -race.chest.cost, p_task_id: null, p_source: 'chest',
-      }).catch(e => console.error('increment_profile_reward failed:', e));
+      supabase.rpc('claim_task_reward', {
+        p_delta_keys: -race.chest.cost, p_task_id: `chest-open-${race.id}-${crypto.randomUUID()}`, p_source: 'chest',
+      }).then(({ error }) => {
+        if (error) console.error('claim_task_reward failed:', error);
+      });
     }
     setChestOpen(true);
     showToastMsg('Sandıq açıldı! 🗝️');
