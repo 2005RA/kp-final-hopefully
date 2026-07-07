@@ -1,7 +1,7 @@
 // supabase/functions/verify-answers/index.ts
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import bcrypt from 'npm:bcryptjs@2.4.3';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -9,27 +9,43 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS_PER_USERNAME = 5;
+const MAX_ATTEMPTS_PER_IP = 20;
 const WINDOW_MINUTES = 15;
 const TOKEN_TTL_MINUTES = 10;
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function getClientIp(req: Request) {
+  const fwd = req.headers.get('x-forwarded-for');
+  if (fwd) return fwd.split(',')[0].trim();
+  return req.headers.get('cf-connecting-ip') ?? 'unknown';
 }
 
-async function tooManyAttempts(username) {
+async function tooManyAttempts(username: string, ip: string) {
   const since = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString();
-  const { count } = await admin
+
+  const { count: usernameCount } = await admin
     .from('reset_attempts')
     .select('id', { count: 'exact', head: true })
     .ilike('username', username)
     .gte('attempted_at', since);
-  return (count ?? 0) >= MAX_ATTEMPTS;
+  if ((usernameCount ?? 0) >= MAX_ATTEMPTS_PER_USERNAME) return true;
+
+  const { count: ipCount } = await admin
+    .from('reset_attempts')
+    .select('id', { count: 'exact', head: true })
+    .eq('ip_address', ip)
+    .gte('attempted_at', since);
+  return (ipCount ?? 0) >= MAX_ATTEMPTS_PER_IP;
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req.headers.get('origin'));
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     const { username, answers } = await req.json();
@@ -38,10 +54,12 @@ Deno.serve(async (req) => {
       return json({ error: 'Yanlış sorğu.' }, 400);
     }
 
-    if (await tooManyAttempts(cleanUsername)) {
+    const ip = getClientIp(req);
+
+    if (await tooManyAttempts(cleanUsername, ip)) {
       return json({ error: 'Çox sayda cəhd. Bir az sonra yenidən yoxla.' }, 429);
     }
-    await admin.from('reset_attempts').insert({ username: cleanUsername });
+    await admin.from('reset_attempts').insert({ username: cleanUsername, ip_address: ip });
 
     const { data: profile } = await admin
       .from('profiles')

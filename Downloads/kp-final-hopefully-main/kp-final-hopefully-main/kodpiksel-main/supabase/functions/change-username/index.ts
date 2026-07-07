@@ -1,6 +1,6 @@
 // supabase/functions/change-username/index.ts
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -10,14 +10,14 @@ const admin = createClient(
 
 const SHADOW_DOMAIN = 'users.kodpiksel.internal';
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
-
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req.headers.get('origin'));
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {

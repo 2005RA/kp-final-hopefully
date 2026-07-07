@@ -5,7 +5,7 @@
 // time and pass/fail are both re-derived here — the client's own numbers
 // are never trusted.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 import { RACE_DEFS, computeCharCount } from '../_shared/raceDefs.ts';
 
 const admin = createClient(
@@ -14,14 +14,14 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
-
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req.headers.get('origin'));
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {

@@ -1,7 +1,7 @@
 // supabase/functions/register/index.ts
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import bcrypt from 'npm:bcryptjs@2.4.3';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -11,18 +11,42 @@ const admin = createClient(
 
 const QUESTION_IDS = [1, 2, 3, 4, 5];
 const SHADOW_DOMAIN = 'users.kodpiksel.internal';
+const MAX_REGISTRATIONS_PER_IP = 5;
+const WINDOW_MINUTES = 60;
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function getClientIp(req: Request) {
+  const fwd = req.headers.get('x-forwarded-for');
+  if (fwd) return fwd.split(',')[0].trim();
+  return req.headers.get('cf-connecting-ip') ?? 'unknown';
+}
+
+async function tooManyRegistrations(ip: string) {
+  const since = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString();
+  const { count } = await admin
+    .from('register_attempts')
+    .select('id', { count: 'exact', head: true })
+    .eq('ip_address', ip)
+    .gte('attempted_at', since);
+  return (count ?? 0) >= MAX_REGISTRATIONS_PER_IP;
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req.headers.get('origin'));
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
+    const ip = getClientIp(req);
+    if (await tooManyRegistrations(ip)) {
+      return json({ error: 'Çox sayda cəhd. Bir az sonra yenidən yoxla.' }, 429);
+    }
+    await admin.from('register_attempts').insert({ ip_address: ip });
+
     const { username, password, age, avatarEmoji, answers } = await req.json();
 
     const cleanUsername = (username || '').trim();
