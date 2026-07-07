@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { RACES } from '../data/races';
 import { RACE_END_REWARDS, WEEKLY_REWARDS, getRewardForRank, PUZZLE_ID, PUZZLE_GRAND_REWARD } from '../data/rewards';
 import { loadGuestProgress, saveGuestProgress, clearGuestProgress } from '../utils/guestProgress';
+import { startOfWeek } from '../lib/week';
 
 const RewardContext = createContext(null);
 const MAX_LEVEL = 100;
@@ -68,16 +69,6 @@ const LEVEL_REWARDS = {
   15: { keys: 12,  chips: 0, hourglasses: 8, stickers: 3, label: 'Səviyyə 15' },
   16: { keys: 13,  chips: 0, hourglasses: 9, stickers: 3, label: 'Səviyyə 16' },
 };
-
-// Returns a Date object at local midnight, Monday of the week containing d.
-function startOfWeek(d) {
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + diff);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
 
 // ── REWARD POPUP ─────────────────────────────────────────────────────────────
 function RewardPopup({ data, onClose }) {
@@ -460,11 +451,19 @@ async function checkRaceRewards() {
   async function checkWeeklyRewards() {
   if (!user) return;
   const currentWeekStart = startOfWeek(new Date());
-  const lastWeekStartDate = new Date(currentWeekStart);
-  lastWeekStartDate.setDate(lastWeekStartDate.getDate() - 7);
-  const lastWeekStart = lastWeekStartDate.toISOString().slice(0, 10);
+  const lastWeekStart = new Date(currentWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
 
-  const { data, error } = await supabase.rpc('claim_weekly_reward', { p_week_start: lastWeekStart });
+  // Pass the full instant (timestamptz), not a sliced date string. The old
+  // code did `lastWeekStartDate.toISOString().slice(0, 10)`, which converts
+  // a LOCAL midnight into its UTC calendar date — for timezones ahead of UTC
+  // (e.g. Baku, UTC+4) that silently rolls back to the previous day, then
+  // Postgres re-interpreted that date as UTC midnight, shifting the whole
+  // reward week hours earlier than the real local Mon 00:00 -> Sun 24:00
+  // window. toISOString() on the full Date has no such ambiguity.
+  const { data, error } = await supabase.rpc('claim_weekly_reward', {
+    p_week_start: lastWeekStart.toISOString(),
+  });
   if (error) return;
   const row = data?.[0];
   if (!row) return;
@@ -475,6 +474,10 @@ async function checkRaceRewards() {
   setRewards(prev => ({ ...prev, key: prev.key + tier.keys, hourglass: prev.hourglass + tier.hourglasses }));
   grantTierVisuals(tier, `📅 Bu həftəki sıralama bağlandı! Sən #${row.rank} yerdə bitirdin. Mükafatın: ${rewardSummary(tier)} 🎉`);
   setPopup({ rank: row.rank, tier, label: 'Həftəlik Sıralama' });
+
+  // The global leaderboard filters by "this week" — once last week's reward
+  // is claimed, kick it to refetch so it visibly empties for the new week.
+  window.dispatchEvent(new CustomEvent('chips-updated'));
 }
 
   useEffect(() => {

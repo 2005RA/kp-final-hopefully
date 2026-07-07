@@ -1,8 +1,13 @@
 // src/hooks/useLeaderboard.js
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { startOfWeek } from '../lib/week';
 
 // ── GLOBAL LEADERBOARD ────────────────────────────────────
+// Fixed Monday 00:00 -> Sunday 24:00 (local) calendar week — same window the
+// claim_weekly_reward RPC uses. Previously this was a rolling "last 7 days"
+// window, which meant the board never actually reset at the week boundary
+// and could disagree with the rank actually used to grant rewards.
 export function useLeaderboard(currentUserId) {
   const [rows, setRows]       = useState([]);
   const [me, setMe]           = useState(null);
@@ -15,7 +20,7 @@ export function useLeaderboard(currentUserId) {
 
     async function fetch() {
       try {
-        const since = new Date(Date.now() - 7 * 864e5).toISOString();
+        const since = startOfWeek().toISOString();
 
         const { data, error } = await supabase
           .from('chip_events')

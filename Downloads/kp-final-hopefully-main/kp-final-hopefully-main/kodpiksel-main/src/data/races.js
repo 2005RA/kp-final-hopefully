@@ -6,8 +6,8 @@ export const RACES = [
     id: 1,   icon: '🏁', title: 'HTML Sürət Yarışı #14',
     course: 'htmlcss', label: 'HTML / CSS',
    status: 'live', date: '2025-01-15', dateLabel: 'Bu gün, 18:00',
-endsAt: '2026-07-06T18:40:00', // YYYY-MM-DDTHH:MM:SS, your local time
-sub: '32 iştirakçı · Canlı', prize: '50 Çip',
+endsAt: '2026-07-07T09:32:20', // YYYY-MM-DDTHH:MM:SS, your local time
+sub: ' ',
     type: 'timed', timeLimit: 180, maxHourglasses: 2,
     chips: 10, keys: 1, pixels: 1,
     taskHtml: `<p>3 dəqiqə ərzində yaz:</p><ul><li><span class="code-chip">&lt;h1&gt;</span> başlıq</li><li><span class="code-chip">&lt;p&gt;</span> paraqraf</li><li><span class="code-chip">&lt;ul&gt;</span> 3 maddəli siyahı</li></ul>`,

@@ -11,8 +11,16 @@ const MEDAL = ['🥇', '🥈', '🥉'];
 export default function GlobalLeaderboard({ currentUserId }) {
   const { rows, me, loading, error } = useLeaderboard(currentUserId);
   const { checkWeeklyRewards } = useRewards();
-  const [weekEnd] = useState(() => getWeekEnd());
-  const timeLeft = useCountdown(weekEnd, checkWeeklyRewards);
+  const [weekEnd, setWeekEnd] = useState(() => getWeekEnd());
+
+  // Previously weekEnd never updated after being set once, so once a
+  // countdown hit 0 it stayed stuck at 0 forever instead of starting the
+  // next week's countdown. Now we recompute the target for the new week
+  // right after claiming last week's reward.
+  const timeLeft = useCountdown(weekEnd, async () => {
+    await checkWeeklyRewards();
+    setWeekEnd(getWeekEnd());
+  });
 
   return (
     <div className="gl-leaderboard">
